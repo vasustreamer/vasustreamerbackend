@@ -1,3 +1,4 @@
+import logging
 from http.server import BaseHTTPRequestHandler
 import os
 import json
@@ -10,8 +11,13 @@ from firebase_admin import credentials, firestore, storage
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
+# Initialize logging
+logging.basicConfig(level=logging.INFO)
+
 # Initialize bot
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
+if not BOT_TOKEN:
+    logging.error("BOT_TOKEN environment variable not set")
 bot = AsyncTeleBot(BOT_TOKEN)
 
 # Initialize Firebase
@@ -28,6 +34,7 @@ def generate_start_keyboard():
 
 @bot.message_handler(commands=['start'])
 async def start(message):
+    logging.info(f"Received /start command from user {message.from_user.id}")
     user_id = str(message.from_user.id)
     user_first_name = str(message.from_user.first_name)
     user_last_name = message.from_user.last_name
@@ -46,7 +53,8 @@ async def start(message):
         user_ref = db.collection('users').document(user_id)
         user_doc = user_ref.get()
 
-        if not user_doc.exists:
+        if not user_doc.exists():
+            logging.info(f"New user {user_id}, creating profile")
             photo = await bot.get_user_profile_photos(user_id, limit=1)
             if photo.total_count > 0:
                 file_id = photo.photos[0][-1].file_id
@@ -92,7 +100,7 @@ async def start(message):
                 referrer_ref = db.collection('users').document(referrer_id)
                 referrer_doc = referrer_ref.get()
 
-                if referrer_doc.exists:
+                if referrer_doc.exists():
                     user_data['referredBy'] = referrer_id
 
                     referrer_data = referrer_doc.to_dict()
@@ -125,10 +133,13 @@ async def start(message):
 
             keyboard = generate_start_keyboard()
             await bot.reply_to(message, welcome_message, reply_markup=keyboard)
+        else:
+            logging.info(f"User {user_id} already exists")
+            await bot.reply_to(message, "Welcome back!", reply_markup=generate_start_keyboard())
     except Exception as e:
         error_message = "Error. Please try again!"
         await bot.reply_to(message, error_message)
-        print(f"Error: {str(e)}")
+        logging.error(f"Error: {str(e)}")
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
